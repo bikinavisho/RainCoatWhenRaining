@@ -27,4 +27,4 @@ The `config.json` will show up after the first time you run the game with this m
 | RainBootsEnabled      | true    | Set to true if you want it to auto-equip the rain boots to your character on rainy days, false if you don't.                                                    |
 | RainCoatEnabled       | true    | Set to true if you want it to automatically change your character into a rain coat on rainy days, false if you don't.                                           |
 | EnableDuringSnow      | false   | Enables automatically equipping the rain ensemble when it is snowing.                                                                                           |
-| RaincoatClothingIndex | 112     | This is the shirt number of the rain coat. If you have not modified  IllogicalMoodSwing﻿'s Rainy Day Clothing mod in any way, you shouldn't need to change this. |
+
