@@ -28,6 +28,9 @@ namespace RainCoatWhenRaining
 		private const string RAIN_HAT_DISPLAY_NAME = "Rain Hood";
 		private const string RAIN_SHIRT_DISPLAY_NAME = "Rain Coat";
 		private const string RAIN_BOOTIES_DISPLAY_NAME = "Gumboots";
+		// used to store and fetch furniture and objects in the farmhouse more easily 
+		private readonly List<StorageFurniture> dresserList = new List<StorageFurniture>();
+		private readonly List<Chest> chestList = new List<Chest>();
 		
 
 		//note: Game1.clothingInformation holds all clothing information currently loaded into the game, key is ID value is the full item entry
@@ -118,7 +121,7 @@ namespace RainCoatWhenRaining
 			}
 
 
-			//find the index of theh rain hood
+			//find the index of the rain hood
 			try
 			{
 				foreach (int id in Game1.content.Load<Dictionary<int, string>>("Data\\hats").Keys)
@@ -164,6 +167,20 @@ namespace RainCoatWhenRaining
 			if (!this.Helper.ModRegistry.IsLoaded("IMS.JA.RainyDayClothing"))
 				return;
 
+			try {
+				foreach (Furniture furniture in Game1.player.currentLocation.furniture)
+					if (furniture is StorageFurniture)
+						this.dresserList.Add(furniture as StorageFurniture);
+				foreach (KeyValuePair<Vector2, StardewValley.Object> pair in Game1.player.currentLocation.Objects.Pairs)
+					if (pair.Value is Chest)
+						this.chestList.Add(pair.Value as Chest);
+			} catch (Exception exception)
+			{
+				this.Monitor.Log("Exception ocurred while attempting to store Game1.player.currentLocation furniture and Objects as Lists", LogLevel.Error);
+				this.Monitor.Log(exception.Message);
+				this.Monitor.Log(exception.StackTrace);
+			}
+			
 
 			/*
 			 * 
@@ -215,13 +232,7 @@ namespace RainCoatWhenRaining
 						Game1.player.ConvertClothingOverrideToClothesItems();
 
 						// remove rain coat from inventory 
-						if (Game1.player.hasItemInInventoryNamed(RAIN_SHIRT_DISPLAY_NAME))
-							Game1.player.removeItemFromInventory(Game1.player.hasItemWithNameThatContains(RAIN_SHIRT_DISPLAY_NAME));
-						else
-						{
-							// if it's not in the player's inventory, search in nearby dressers and chests and remove from there
-							this.RemoveItemFromContainer(raincoat as Item);
-						}
+						this.RemoveItemFromInventoryOrContainer(raincoat as Item);
 					}
 				}
 				
@@ -250,13 +261,7 @@ namespace RainCoatWhenRaining
 						Game1.player.changeHat(this.rainHatIndex);
 
 						// Remove rain hood from inventory 
-						if (Game1.player.hasItemInInventoryNamed(RAIN_HAT_DISPLAY_NAME))
-							Game1.player.removeItemFromInventory(Game1.player.hasItemWithNameThatContains(RAIN_HAT_DISPLAY_NAME));
-						else
-						{
-							// if it's not in the player's inventory, search in nearby dressers and chests and remove from there
-							this.RemoveItemFromContainer(new Hat(this.rainHatIndex) as Item);
-						}
+						this.RemoveItemFromInventoryOrContainer(new Hat(this.rainHatIndex) as Item);
 
 						//this.Monitor.Log($"CURRENT HAIR??: {Game1.player.hair}", LogLevel.Debug);
 						//TODO: add config option to force change hair on rainy days - hair 8 (index 7)
@@ -289,13 +294,7 @@ namespace RainCoatWhenRaining
 						Game1.player.boots.Value.onEquip();
 
 						// Step 3 - remove rain boots from inventory 
-						if (Game1.player.hasItemInInventoryNamed(RAIN_BOOTIES_DISPLAY_NAME))
-							Game1.player.removeItemFromInventory(Game1.player.hasItemWithNameThatContains(RAIN_BOOTIES_DISPLAY_NAME));
-						else
-						{
-							// if it's not in the player's inventory, search in nearby dressers and chests and remove from there
-							this.RemoveItemFromContainer(new Boots(this.rainBootsIndex) as Item);
-						}
+						this.RemoveItemFromInventoryOrContainer(new Boots(this.rainBootsIndex) as Item);
 					}
 
 				}
@@ -303,6 +302,9 @@ namespace RainCoatWhenRaining
 				if (this.Config.RainBootsEnabled || this.Config.RainCoatEnabled || this.Config.RainHoodEnabled)
 					Game1.player.UpdateClothing();
 			}
+			// clear these lists to ensure they stay up to date during each function exection
+			this.dresserList.Clear();
+			this.chestList.Clear();
 		}
 		/// <summary>Raised as the day ends. Checks to see if it is raining. If it is, unequip rain equipment.</summary>
 		/// <param name="sender">The event sender.</param>
@@ -317,12 +319,20 @@ namespace RainCoatWhenRaining
 			if (!this.Helper.ModRegistry.IsLoaded("IMS.JA.RainyDayClothing"))
 				return;
 
+
 			// When it is raining, unequip Rain Hood, Coat, and Boots at end of day
 			if (this.WeatherJustifiesRainCoat())
 			{
 				this.Monitor.Log($"Previous Shirt: {this.previousShirt?.displayName}", LogLevel.Debug);
 				this.Monitor.Log($"Previous Hat: {this.previousHat?.DisplayName}", LogLevel.Debug);
 				this.Monitor.Log($"Previous Boots: {this.previousBoots?.DisplayName}", LogLevel.Debug);
+
+				foreach (Furniture furniture in Game1.player.currentLocation.furniture)
+					if (furniture is StorageFurniture)
+						this.dresserList.Add(furniture as StorageFurniture);
+				foreach (KeyValuePair<Vector2, StardewValley.Object> pair in Game1.player.currentLocation.Objects.Pairs)
+					if (pair.Value is Chest)
+						this.chestList.Add(pair.Value as Chest);
 
 				// Read what was previously equipped and equip it
 				if (this.Config.RainCoatEnabled)
@@ -334,36 +344,25 @@ namespace RainCoatWhenRaining
 						Game1.player.changeShirt(ConvertToMaleOrFemaleIndex(this.previousShirt));
 						Game1.player.ConvertClothingOverrideToClothesItems();
 						// remove previous shirt from inventory 
-						if (Game1.player.hasItemInInventoryNamed(this.previousShirt.displayName))
-							Game1.player.removeItemFromInventory(Game1.player.hasItemWithNameThatContains(this.previousShirt.displayName));
-						else
-						{
-							// if it's not in the player's inventory, search in nearby dressers and chests and remove from there
-							this.RemoveItemFromContainer(this.previousShirt as Item);
-						}
+						this.RemoveItemFromInventoryOrContainer(this.previousShirt as Item);
 
 						// put rain coat back in dresser or player's inventory
 						Clothing rainCoat = new Clothing(this.rainCoatIndex);
 						this.PutItemAway(rainCoat);
 					}
 				}
-				// if is currently wearing the rain hat, remove it 
+
 				if (this.Config.RainHoodEnabled)
 				{
+					// if is currently wearing the rain hat, remove it 
 					if (Game1.player.hat.Value.which.Value == this.rainHatIndex)
 					{
-						// if the player was previously wearing a hat, put it back , else take it off
+						// if the player was previously wearing a hat, put it back on, else just take the rain hood off
 						if (this.isWearingHat)
 						{
 							Game1.player.changeHat(this.previousHat.which);
-							// if the player has their previous hat in their inventory, remove it 
-							if (Game1.player.hasItemInInventoryNamed(this.previousHat.DisplayName))
-								Game1.player.removeItemFromInventory(Game1.player.hasItemWithNameThatContains(this.previousHat.DisplayName));
-							else
-							{
-								// if it's not in the player's inventory, search in nearby dressers and chests and remove from there
-								this.RemoveItemFromContainer(this.previousHat as Item);
-							}
+							// find and remove player's previous hat from their inventory or a nearby dresser or chest
+							this.RemoveItemFromInventoryOrContainer(this.previousHat as Item);
 						}
 						else
 							Game1.player.hat.Value = null;
@@ -377,34 +376,29 @@ namespace RainCoatWhenRaining
 				if (this.Config.RainBootsEnabled)
 				{
 					Boots rainBoots = new Boots(this.rainBootsIndex);
-					// Step 1 - take off rain boots
+					// if player is currently wearing the rain boots, EXECUTE THE LOGIC!
 					if (Game1.player.boots.Value.DisplayName == rainBoots.DisplayName)
 					{
+						// Step 1 - take off rain boots
 						Game1.player.boots.Value.onUnequip();
 
 						// Step 2 - put the boots in a nearby dresser  or player inventory
 						Boots rainBooties = new Boots(this.rainBootsIndex);
 						this.PutItemAway(rainBooties);
-					}
-					// Step 3 - equip previous boots
-					if (Game1.player.boots.Value.DisplayName == rainBoots.DisplayName)
-					{
+
+						// Step 3 - equip previous boots
 						if (this.previousBoots != null)
 						{
-							// if player has the previousBoots in their inventory, remove it 
-							if (Game1.player.hasItemInInventoryNamed(this.previousBoots.DisplayName))
-								Game1.player.removeItemFromInventory(Game1.player.hasItemWithNameThatContains(this.previousBoots.DisplayName));
-							else
-							{
-								// if it's not in the player's inventory, search in nearby dressers and chests and remove from there
-								this.RemoveItemFromContainer(this.previousBoots as Item);
-							}
+							// find and remove player's previous boots from their inventory or a nearby dresser or chest
+							this.RemoveItemFromInventoryOrContainer(this.previousBoots as Item);
+
+							// put the player's previous boots back on
 							Game1.player.boots.Value = this.previousBoots;
 							Game1.player.boots.Value.onEquip();
 						}
 						else
 						{
-							// if player didn't have previousBoots, unequip the boots
+							// if player didn't have previousBoots, unequip the rain boots
 							Game1.player.boots.Value.onUnequip();
 							Game1.player.boots.Value = null;
 						}
@@ -419,7 +413,11 @@ namespace RainCoatWhenRaining
 					Game1.player.UpdateClothing();
 
 				this.ResetPreviousData();
+				
 			}
+			// clear these lists to ensure they stay up to date during each function exection
+			this.dresserList.Clear();
+			this.chestList.Clear();
 		}
 	
 		/// <summary>
@@ -536,17 +534,13 @@ namespace RainCoatWhenRaining
 		{
 			bool itemHasBeenPutAway = false;
 			try
-			{ 
+			{
 				// first try to put away in dresser 
-				foreach (Furniture furniture in Game1.player.currentLocation.furniture)
+				if (this.dresserList[0] != null)
 				{
-					if (furniture is StorageFurniture)
-					{
-						(furniture as StorageFurniture).AddItem(item);
-						itemHasBeenPutAway = true;
-						this.Monitor.Log($"{item.DisplayName} has been put away in {furniture.DisplayName}.", LogLevel.Info);
-						break;
-					}
+					(this.dresserList[0] as StorageFurniture).AddItem(item);
+					itemHasBeenPutAway = true;
+					this.Monitor.Log($"{item.DisplayName} has been put away in {this.dresserList[0].DisplayName}.", LogLevel.Info);
 				}
 			}
 			catch (Exception e)
@@ -573,37 +567,51 @@ namespace RainCoatWhenRaining
 			bool isAnyRainItem = false;
 
 			// check in any dressers in the player's current location
-			foreach (Furniture furniture in Game1.player.currentLocation.furniture)
+			if (this.dresserList.Count > 0)
 			{
-				if (furniture is StorageFurniture)
-					foreach (Item item in (furniture as StorageFurniture).heldItems)
+				foreach (StorageFurniture dresser in this.dresserList)
+				{
+					foreach (Item item in dresser.heldItems)
 						if (item.DisplayName.Equals(rainItemDisplayName))
 						{
 							isAnyRainItem = true;
 							break;
 						}
-				if (isAnyRainItem)
-					break;
+					if (isAnyRainItem)
+						break;
+				}
 			}
 
 			// check in any chests in the player's current location 
-			foreach (KeyValuePair<Vector2, StardewValley.Object> pair in Game1.player.currentLocation.Objects.Pairs) 
-			{ 
-				if (pair.Value is Chest)
+			if (this.chestList.Count > 0)
+			{
+				foreach (Chest chest in this.chestList)
 				{
-					foreach (Item item in (pair.Value as StardewValley.Objects.Chest).items)
+					foreach (Item item in chest.items) 
 						if (item.DisplayName.Equals(rainItemDisplayName))
 						{
 							isAnyRainItem = true;
 							break;
 						}
+					if (isAnyRainItem)
+						break;
 				}
-				if (isAnyRainItem)
-					break;
 			}
-			
 
 			return isAnyRainItem;
+		}
+
+		/// <summary>
+		/// Searches in the player's inventory for item. If it's found in inventory, removes it from inventory. 
+		/// If it isn't found in the player's inventory, checks nearby containers (1) dressers (2) chests to find and remove it 
+		/// </summary>
+		/// <param name="itemToRemove">The item we are trying to remove.</param>
+		private void RemoveItemFromInventoryOrContainer(Item itemToRemove)
+		{
+			if (Game1.player.hasItemInInventoryNamed(itemToRemove.DisplayName))
+				Game1.player.removeItemFromInventory(Game1.player.hasItemWithNameThatContains(itemToRemove.DisplayName));
+			else
+				this.RemoveItemFromContainer(itemToRemove);
 		}
 
 		/// <summary>
@@ -616,46 +624,51 @@ namespace RainCoatWhenRaining
 				bool itemHasBeenRemoved = false;
 
 				// check in any dressers in the player's current location
-				StorageFurniture dresser = null;
-				foreach (Furniture furniture in Game1.player.currentLocation.furniture)
+				if (this.dresserList.Count > 0)
 				{
-					if (furniture is StorageFurniture)
-						foreach (Item item in (furniture as StorageFurniture).heldItems)
+					foreach (StorageFurniture dresser in this.dresserList)
+					{
+						foreach(Item item in dresser.heldItems)
 							if (item.DisplayName.Equals(itemToRemove.DisplayName))
 							{
-								dresser = furniture as StorageFurniture;
-
+								// remove from dresser (this copies what's in the base game code)
 								dresser.heldItems.Remove(item);
 								dresser.ClearNulls();
 
+								// set itemHasBeenRemoved to true so it isn't removed multiple times 
 								itemHasBeenRemoved = true;
+
 								break;
 							}
-					if (dresser != null)
-						break;
-				}
-				if (!itemHasBeenRemoved)
-				{
-					Chest chest = null;
-					// check in any chests in the player's current location 
-					foreach (KeyValuePair<Vector2, StardewValley.Object> pair in Game1.player.currentLocation.Objects.Pairs)
-					{
-						if (pair.Value is Chest)
-							foreach (Item item in (pair.Value as StardewValley.Objects.Chest).items)
-								if (item.DisplayName.Equals(itemToRemove.DisplayName))
-								{
-									chest = pair.Value as Chest;
-
-									chest.GetItemsForPlayer(Game1.player.UniqueMultiplayerID).Remove(item);
-									chest.clearNulls();
-
-									itemHasBeenRemoved = true;
-									break;
-								}
-						if (chest != null)
+						if (itemHasBeenRemoved)
 							break;
 					}
 				}
+
+				// if item hasn't already been removed, keep searching 
+				if (!itemHasBeenRemoved && this.chestList.Count > 0)
+				{
+					// check in any chests in the player's current location 
+					foreach (Chest chest in this.chestList)
+					{
+						foreach (Item item in chest.items) 
+							if (item.DisplayName.Equals(itemToRemove.DisplayName))
+							{
+								// remove from chest (this copies what's in the base game code)
+								chest.GetItemsForPlayer(Game1.player.UniqueMultiplayerID).Remove(item);
+								chest.clearNulls();
+
+								// set itemHasBeenRemoved to true so it isn't removed multiple times 
+								itemHasBeenRemoved = true;
+								break;
+							}
+						if (itemHasBeenRemoved)
+							break;
+					}
+				}
+				// if item still was not removed, log a warning message
+				if (!itemHasBeenRemoved)
+					this.Monitor.Log($"Was unable to find {itemToRemove.DisplayName} to be removed.", LogLevel.Warn);
 			} catch (Exception e)
 			{
 				this.Monitor.Log($"Exception thrown while trying to remove \"{itemToRemove.DisplayName}\" from dresser/chest", LogLevel.Error);
